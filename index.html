@@ -644,7 +644,7 @@ function hexToRgb(hex){
   const n = parseInt(hex,16);
   return [(n>>16)&255, (n>>8)&255, n&255];
 }
-const INK = [26,29,35], SLATE = [91,100,114], LINE = [232,228,220];
+const INK = [23,25,26], SLATE = [104,112,110], LINE = [217,216,206], PAPER = [243,240,232];
 
 // jsPDF's built-in fonts (Helvetica/Times) only support the WinAnsi/CP1252
 // character set. $, £, and € are in it — the Naira sign (₦) is not, and
@@ -706,6 +706,15 @@ function checkPageBreak(doc, y, needed){
   return y;
 }
 
+function pdfSectionLabel(doc, text, x, y, color=SLATE, align='left'){
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(8); doc.setTextColor(...color);
+  doc.text(text.toUpperCase(), x, y, {align});
+}
+
+function pdfRule(doc, x1, y, x2, color=LINE, width=.7){
+  doc.setDrawColor(...color); doc.setLineWidth(width); doc.line(x1, y, x2, y);
+}
+
 function drawHeader(doc, title, subtitle, logoDims, branding){
   let y = PDF_MARGIN;
   const rightX = PDF_WIDTH - PDF_MARGIN;
@@ -719,24 +728,23 @@ function drawHeader(doc, title, subtitle, logoDims, branding){
     }catch(e){ /* unsupported format — fall through to text */ }
     y += 56;
   } else {
-    doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(...INK);
+    doc.setFont(PDF_FONT,'bold'); doc.setFontSize(14); doc.setTextColor(...INK);
     doc.text(branding.businessName || 'Your business', PDF_MARGIN, y+12);
     y += 26;
   }
-  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(...SLATE);
+  doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9); doc.setTextColor(...SLATE);
   if(branding.address) { doc.text(branding.address, PDF_MARGIN, y); y += 13; }
   const contactLine = [branding.email, branding.phone].filter(Boolean).join('  ·  ');
   if(contactLine) { doc.text(contactLine, PDF_MARGIN, y); y += 13; }
 
-  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(24); doc.setTextColor(...INK);
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(25); doc.setTextColor(...INK);
   doc.text(title, rightX, PDF_MARGIN+14, {align:'right'});
-  doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(...SLATE);
+  doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9); doc.setTextColor(...SLATE);
   doc.text(subtitle, rightX, PDF_MARGIN+30, {align:'right'});
 
   const headerBottom = Math.max(y, PDF_MARGIN+44) + 10;
-  doc.setDrawColor(...LINE); doc.setLineWidth(1);
-  doc.line(PDF_MARGIN, headerBottom, rightX, headerBottom);
-  return headerBottom + 24;
+  pdfRule(doc, PDF_MARGIN, headerBottom, rightX, INK, 1.2);
+  return headerBottom + 28;
 }
 
 // Invoice-specific header — bold sans "INVOICE" in the brand accent color,
@@ -757,19 +765,19 @@ function drawInvoiceHeader(doc, data, logoDims, branding){
     }catch(e){ /* unsupported format — fall through to text-only */ }
     y += 46;
   }
-  doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(...INK);
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(16); doc.setTextColor(...INK);
   doc.text(branding.businessName || 'Your business', PDF_MARGIN, y+12);
   y += 30;
-  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(...SLATE);
+  doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9); doc.setTextColor(...SLATE);
   if(branding.address){ doc.text(branding.address, PDF_MARGIN, y); y += 13; }
   const contactLine = [branding.email, branding.phone].filter(Boolean).join('  ·  ');
   if(contactLine){ doc.text(contactLine, PDF_MARGIN, y); y += 13; }
-  doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(...INK);
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(9); doc.setTextColor(...INK);
   doc.text('Invoice No: '+(data.number||''), PDF_MARGIN, y); y += 13;
 
-  doc.setFont('helvetica','bold'); doc.setFontSize(27); doc.setTextColor(...accentRgb);
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(28); doc.setTextColor(...accentRgb);
   doc.text('INVOICE', rightX, PDF_MARGIN+16, {align:'right'});
-  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(...SLATE);
+  doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9); doc.setTextColor(...SLATE);
   doc.text('Issued: '+(data.issueDate||''), rightX, PDF_MARGIN+34, {align:'right'});
   doc.text('Due: '+(data.dueDate||''), rightX, PDF_MARGIN+47, {align:'right'});
 
@@ -777,12 +785,11 @@ function drawInvoiceHeader(doc, data, logoDims, branding){
 }
 
 function drawTableHeader(doc, y, cols){
-  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...SLATE);
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(8); doc.setTextColor(...SLATE);
   cols.forEach(c=> doc.text(c.label, c.x, y, {align:c.align||'left'}));
   y += 8;
-  doc.setDrawColor(...INK); doc.setLineWidth(1);
-  doc.line(PDF_MARGIN, y, PDF_WIDTH-PDF_MARGIN, y);
-  return y + 16;
+  pdfRule(doc, PDF_MARGIN, y, PDF_WIDTH-PDF_MARGIN, INK, 1);
+  return y + 18;
 }
 
 function paymentLines(payMethods, branding){
@@ -812,55 +819,53 @@ async function drawInvoicePdf(data){
   const accentRgb = hexToRgb(b.accentColor);
   let y = drawInvoiceHeader(doc, data, logoDims, b);
 
-  // "TO" block, right-aligned
-  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...SLATE);
-  doc.text('TO', rightX, y, {align:'right'});
+  // Client block, right-aligned
+  pdfSectionLabel(doc, 'Billed to', rightX, y, SLATE, 'right');
   y += 14;
-  doc.setFont('helvetica','bold'); doc.setFontSize(11.5); doc.setTextColor(...INK);
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(12); doc.setTextColor(...INK);
   doc.text(data.clientName || '—', rightX, y, {align:'right'});
   y += 14;
-  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(...SLATE);
+  doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9); doc.setTextColor(...SLATE);
   if(data.clientEmail){ doc.text(data.clientEmail, rightX, y, {align:'right'}); y += 12; }
   if(data.clientAddress){ doc.text(data.clientAddress, rightX, y, {align:'right'}); y += 12; }
   y += 18;
 
-  // Colored table header bar
+  // Quiet table header with an accent rule keeps the data dominant.
   const tableW = rightX - PDF_MARGIN;
-  const barH = 24;
-  doc.setFillColor(...accentRgb);
-  doc.rect(PDF_MARGIN, y, tableW, barH, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(255,255,255);
-  doc.text('ITEM DESCRIPTION', PDF_MARGIN+10, y+barH/2+3);
-  doc.text('UNIT PRICE', rightX-190, y+barH/2+3, {align:'right'});
-  doc.text('QTY', rightX-110, y+barH/2+3, {align:'right'});
-  doc.text('TOTAL', rightX-10, y+barH/2+3, {align:'right'});
-  y += barH + 18;
+  pdfSectionLabel(doc, 'Description', PDF_MARGIN+10, y);
+  pdfSectionLabel(doc, 'Unit price', rightX-190, y);
+  pdfSectionLabel(doc, 'Qty', rightX-110, y);
+  pdfSectionLabel(doc, 'Amount', rightX-10, y, SLATE, 'right');
+  pdfRule(doc, PDF_MARGIN, y+9, rightX, accentRgb, 2);
+  y += 27;
 
-  doc.setFont('helvetica','normal'); doc.setFontSize(10.5); doc.setTextColor(...INK);
-  data.items.forEach(it=>{
+  doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
+  (data.items||[]).forEach((it,index)=>{
     const descLines = doc.splitTextToSize(it.desc || '(no description)', 230);
-    const rowH = Math.max(16, descLines.length*13+6);
+    const rowH = Math.max(22, descLines.length*12+10);
     y = checkPageBreak(doc, y, rowH+8);
-    doc.setFont('helvetica','bold');
+    if(index%2===0){ doc.setFillColor(...PAPER); doc.rect(PDF_MARGIN, y-13, tableW, rowH, 'F'); }
+    doc.setFont(PDF_FONT,'bold');
     doc.text(descLines, PDF_MARGIN+10, y);
-    doc.setFont('helvetica','normal');
+    doc.setFont(PDF_FONT,'normal');
     doc.text(pdfCur+fmt(it.rate), rightX-190, y, {align:'right'});
     doc.text(String(it.qty), rightX-110, y, {align:'right'});
+    doc.setFont(PDF_FONT,'bold');
     doc.text(pdfCur+fmt(it.qty*it.rate), rightX-10, y, {align:'right'});
     y += rowH;
-    doc.setDrawColor(...LINE); doc.setLineWidth(0.5);
-    doc.line(PDF_MARGIN, y-6, rightX, y-6);
+    pdfRule(doc, PDF_MARGIN, y-5, rightX, LINE, .5);
   });
-  y += 16;
+  y += 18;
 
-  y = checkPageBreak(doc, y, 110);
+  y = checkPageBreak(doc, y, 120);
   const totalsLabelX = rightX - 190;
-  doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(...accentRgb);
+  pdfSectionLabel(doc, 'Summary', totalsLabelX, y, accentRgb);
+  y += 16;
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(9.5); doc.setTextColor(...INK);
   doc.text('SUBTOTAL', totalsLabelX, y);
-  doc.setFont('helvetica','bold'); doc.setTextColor(...INK);
   doc.text(pdfCur+fmt(data.subtotal), rightX-10, y, {align:'right'});
   y += 18;
-  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(...SLATE);
+  doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9.5); doc.setTextColor(...SLATE);
   doc.text('Discount', totalsLabelX, y);
   doc.text('-'+pdfCur+fmt(data.discountAmt), rightX-10, y, {align:'right'});
   y += 16;
@@ -868,21 +873,19 @@ async function drawInvoicePdf(data){
   doc.text(pdfCur+fmt(data.taxAmt), rightX-10, y, {align:'right'});
   y += 16;
 
-  // Highlighted TOTAL DUE box
-  const boxH = 32;
-  doc.setFillColor(...accentRgb);
-  doc.rect(totalsLabelX-10, y, rightX-(totalsLabelX-10), boxH, 'F');
-  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(255,255,255);
+  const boxH = 38;
+  doc.setFillColor(...INK);
+  doc.rect(totalsLabelX-12, y, rightX-(totalsLabelX-12), boxH, 'F');
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(10); doc.setTextColor(...accentRgb);
   doc.text('TOTAL DUE', totalsLabelX, y+boxH/2+4);
-  doc.setFontSize(13);
+  doc.setFontSize(14);
   doc.text(pdfCur+fmt(data.grand), rightX-10, y+boxH/2+4, {align:'right'});
-  y += boxH + 26;
+  y += boxH + 28;
 
   if(data.notes){
     y = checkPageBreak(doc, y, 30);
-    doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...SLATE);
-    doc.text('NOTE', PDF_MARGIN, y); y += 13;
-    doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
+    pdfSectionLabel(doc, 'Note', PDF_MARGIN, y); y += 14;
+    doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
     const noteLines = doc.splitTextToSize(data.notes, PDF_WIDTH-PDF_MARGIN*2);
     doc.text(noteLines, PDF_MARGIN, y);
     y += noteLines.length*12 + 16;
@@ -893,21 +896,20 @@ async function drawInvoicePdf(data){
   doc.text('Thank you for your business', PDF_MARGIN, y);
   y += 22;
 
-  // Footer: three columns — Questions / Payment Info / Terms & Note
+  // Footer: three columns — contact, payment details, and notes.
   const pay = paymentLines(data.payMethods||[], b);
   const footerNeeded = 60 + Math.max(pay.length, 1)*13;
   y = checkPageBreak(doc, y, footerNeeded);
-  doc.setDrawColor(...LINE); doc.setLineWidth(1);
-  doc.line(PDF_MARGIN, y, rightX, y);
+  pdfRule(doc, PDF_MARGIN, y, rightX, INK, 1);
   y += 20;
   const colW = tableW/3;
   const col1 = PDF_MARGIN, col2 = PDF_MARGIN+colW, col3 = PDF_MARGIN+colW*2;
-  doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(...accentRgb);
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(8.5); doc.setTextColor(...accentRgb);
   doc.text('QUESTIONS?', col1, y);
   doc.text('PAYMENT INFO', col2, y);
   doc.text('TERMS & NOTE', col3, y);
   let y1=y+16, y2=y+16, y3=y+16;
-  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...INK);
+  doc.setFont(PDF_FONT,'normal'); doc.setFontSize(8.5); doc.setTextColor(...INK);
   if(b.email){ doc.text(doc.splitTextToSize('Email: '+b.email, colW-10), col1, y1); y1+=13; }
   if(b.phone){ doc.text(doc.splitTextToSize('Call: '+b.phone, colW-10), col1, y1); y1+=13; }
   pay.slice(0,3).forEach(([label,val])=>{
@@ -926,26 +928,27 @@ async function drawProposalPdf(data){
   const logoDims = await loadImageDims(b.logo);
   const rightX = PDF_WIDTH - PDF_MARGIN;
   const pdfCur = pdfCurrencyLabel(data.currency);
+  const accentRgb = hexToRgb(b.accentColor);
   let y = drawHeader(doc, 'Proposal', data.date || '', logoDims, b);
 
-  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...SLATE);
-  doc.text('PROJECT', PDF_MARGIN, y);
-  doc.text('PREPARED FOR', rightX, y, {align:'right'});
+  pdfSectionLabel(doc, 'Project', PDF_MARGIN, y);
+  pdfSectionLabel(doc, 'Prepared for', rightX, y, SLATE, 'right');
   y += 14;
-  doc.setFont('helvetica','normal'); doc.setFontSize(12); doc.setTextColor(...INK);
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(14); doc.setTextColor(...INK);
   doc.text(data.title || 'Untitled project', PDF_MARGIN, y);
   doc.text(data.client || '—', rightX, y, {align:'right'});
   y += 28;
 
   const scope = (data.scope||[]).filter(s=>s && s.trim());
   if(scope.length){
-    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...SLATE);
-    doc.text('SCOPE OF WORK', PDF_MARGIN, y); y += 16;
-    doc.setFont('helvetica','normal'); doc.setFontSize(10.5); doc.setTextColor(...INK);
+    pdfSectionLabel(doc, 'Scope of work', PDF_MARGIN, y); y += 16;
+    doc.setFont(PDF_FONT,'normal'); doc.setFontSize(10); doc.setTextColor(...INK);
     scope.forEach(s=>{
-      const lines = doc.splitTextToSize('•  '+s, PDF_WIDTH-PDF_MARGIN*2-10);
+      const lines = doc.splitTextToSize(s, PDF_WIDTH-PDF_MARGIN*2-18);
       y = checkPageBreak(doc, y, lines.length*14+4);
-      doc.text(lines, PDF_MARGIN, y);
+      doc.setFillColor(...accentRgb);
+      doc.circle(PDF_MARGIN+3, y-3, 2.5, 'F');
+      doc.text(lines, PDF_MARGIN+14, y);
       y += lines.length*14 + 4;
     });
     y += 12;
@@ -954,18 +957,22 @@ async function drawProposalPdf(data){
   const milestones = (data.milestones||[]).filter(m=>m.name && m.name.trim());
   if(milestones.length){
     y = checkPageBreak(doc, y, 40);
-    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...SLATE);
-    doc.text('TIMELINE', PDF_MARGIN, y); y += 16;
+    pdfSectionLabel(doc, 'Timeline', PDF_MARGIN, y); y += 16;
     y = drawTableHeader(doc, y, [
       {label:'MILESTONE', x:PDF_MARGIN}, {label:'DATE', x:PDF_MARGIN+220}, {label:'DELIVERABLE', x:PDF_MARGIN+320}
     ]);
-    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(...INK);
+    doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
     milestones.forEach(m=>{
-      y = checkPageBreak(doc, y, 18);
+      const deliverableLines = doc.splitTextToSize(m.deliverable||'', 180);
+      const rowH = Math.max(18, deliverableLines.length*12+6);
+      y = checkPageBreak(doc, y, rowH);
+      doc.setFont(PDF_FONT,'bold');
       doc.text(m.name||'', PDF_MARGIN, y);
+      doc.setFont(PDF_FONT,'normal');
       doc.text(m.date||'', PDF_MARGIN+220, y);
-      doc.text(doc.splitTextToSize(m.deliverable||'', 190), PDF_MARGIN+320, y);
-      y += 18;
+      doc.text(deliverableLines, PDF_MARGIN+320, y);
+      y += rowH;
+      pdfRule(doc, PDF_MARGIN, y-5, rightX, LINE, .5);
     });
     y += 12;
   }
@@ -973,24 +980,27 @@ async function drawProposalPdf(data){
   const packages = (data.packages||[]).filter(p=>p.name && p.name.trim());
   if(packages.length){
     y = checkPageBreak(doc, y, 40);
-    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...SLATE);
-    doc.text('PRICING', PDF_MARGIN, y); y += 16;
+    pdfSectionLabel(doc, 'Pricing', PDF_MARGIN, y); y += 16;
     y = drawTableHeader(doc, y, [
       {label:'ITEM', x:PDF_MARGIN}, {label:'DESCRIPTION', x:PDF_MARGIN+160}, {label:'AMOUNT', x:rightX, align:'right'}
     ]);
-    doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(...INK);
+    doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
     let total = 0;
     packages.forEach(p=>{
-      y = checkPageBreak(doc, y, 18);
+      const descLines = doc.splitTextToSize(p.desc||'', 220);
+      const rowH = Math.max(18, descLines.length*12+6);
+      y = checkPageBreak(doc, y, rowH);
+      doc.setFont(PDF_FONT,'bold');
       doc.text(p.name||'', PDF_MARGIN, y);
-      doc.text(doc.splitTextToSize(p.desc||'', 220), PDF_MARGIN+160, y);
+      doc.setFont(PDF_FONT,'normal');
+      doc.text(descLines, PDF_MARGIN+160, y);
       doc.text(pdfCur+fmt(p.amount||0), rightX, y, {align:'right'});
       total += (p.amount||0);
-      y += 18;
+      y += rowH;
+      pdfRule(doc, PDF_MARGIN, y-5, rightX, LINE, .5);
     });
-    y += 8;
-    doc.setDrawColor(...INK); doc.line(PDF_MARGIN+320, y, rightX, y); y += 20;
-    const accentRgb = hexToRgb(b.accentColor);
+    y += 10;
+    pdfRule(doc, PDF_MARGIN+320, y, rightX, INK, 1); y += 20;
     doc.setFont(PDF_FONT,'bold'); doc.setFontSize(17); doc.setTextColor(...accentRgb);
     doc.text('Total', PDF_MARGIN+320, y);
     doc.text(pdfCur+fmt(total), rightX, y, {align:'right'});
@@ -999,9 +1009,8 @@ async function drawProposalPdf(data){
 
   if(data.terms){
     y = checkPageBreak(doc, y, 40);
-    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...SLATE);
-    doc.text('TERMS', PDF_MARGIN, y); y += 16;
-    doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
+    pdfSectionLabel(doc, 'Terms', PDF_MARGIN, y); y += 16;
+    doc.setFont(PDF_FONT,'normal'); doc.setFontSize(9.5); doc.setTextColor(...INK);
     const lines = doc.splitTextToSize(data.terms, PDF_WIDTH-PDF_MARGIN*2);
     y = checkPageBreak(doc, y, lines.length*13);
     doc.text(lines, PDF_MARGIN, y);
@@ -1010,11 +1019,12 @@ async function drawProposalPdf(data){
 
   if(data.signature){
     y = checkPageBreak(doc, y, 60);
-    doc.setDrawColor(...INK); doc.setLineWidth(1);
-    doc.line(PDF_MARGIN, y+28, PDF_MARGIN+260, y+28);
+    pdfSectionLabel(doc, 'Signature', PDF_MARGIN, y);
+    y += 8;
+    pdfRule(doc, PDF_MARGIN, y+28, PDF_MARGIN+260, INK, 1);
     doc.setFont(PDF_FONT,'italic'); doc.setFontSize(20); doc.setTextColor(...INK);
     doc.text(data.signature, PDF_MARGIN, y+22);
-    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...SLATE);
+    doc.setFont(PDF_FONT,'normal'); doc.setFontSize(8.5); doc.setTextColor(...SLATE);
     doc.text('Signed '+(data.signedAt||''), PDF_MARGIN, y+42);
   }
   return doc;
