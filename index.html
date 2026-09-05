@@ -635,10 +635,8 @@ function resetProposalForm(){
 const PDF_MARGIN = 44;
 const PDF_WIDTH = 595.28; // A4 pt
 const PDF_PAGE_H = 841.89;
-// jsPDF's standard fonts are embedded without extra assets. Use one family
-// throughout the export so the PDF keeps the same geometric, modern tone as
-// the Syne-led interface instead of mixing Helvetica with Times.
-const PDF_FONT = 'helvetica';
+const PDF_FONT = 'Syne';
+let pdfFontDataPromise;
 
 function hexToRgb(hex){
   hex = (hex||'#0F5C4A').replace('#','');
@@ -667,10 +665,36 @@ function loadImageDims(dataUrl){
   });
 }
 
-function newPdfDoc(){
+function arrayBufferToBase64(buffer){
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  for(let i=0;i<bytes.length;i+=1) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+async function loadPdfFontData(){
+  if(!pdfFontDataPromise){
+    pdfFontDataPromise = Promise.all([
+      ['normal','https://cdn.jsdelivr.net/fontsource/fonts/syne@latest/latin-400-normal.ttf'],
+      ['bold','https://cdn.jsdelivr.net/fontsource/fonts/syne@latest/latin-700-normal.ttf']
+    ].map(async ([style,url])=>[style,arrayBufferToBase64(await (await fetch(url)).arrayBuffer())])).then(entries=>Object.fromEntries(entries)).catch(()=>null);
+  }
+  return pdfFontDataPromise;
+}
+
+async function newPdfDoc(){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'a4', orientation:'portrait' });
-  doc.setFont(PDF_FONT,'normal');
+  const fontData = await loadPdfFontData();
+  if(fontData){
+    doc.addFileToVFS('Syne-Regular.ttf', fontData.normal);
+    doc.addFont('Syne-Regular.ttf', PDF_FONT, 'normal');
+    doc.addFileToVFS('Syne-Bold.ttf', fontData.bold);
+    doc.addFont('Syne-Bold.ttf', PDF_FONT, 'bold');
+  }
+  const nativeSetFont = doc.setFont.bind(doc);
+  doc.setFont = (font, style)=>nativeSetFont((font === 'helvetica' || font === 'times') && fontData ? PDF_FONT : font, style);
+  doc.setFont(fontData ? PDF_FONT : 'helvetica','normal');
   return doc;
 }
 
@@ -704,7 +728,7 @@ function drawHeader(doc, title, subtitle, logoDims, branding){
   const contactLine = [branding.email, branding.phone].filter(Boolean).join('  ·  ');
   if(contactLine) { doc.text(contactLine, PDF_MARGIN, y); y += 13; }
 
-  doc.setFont('times','bold'); doc.setFontSize(24); doc.setTextColor(...INK);
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(24); doc.setTextColor(...INK);
   doc.text(title, rightX, PDF_MARGIN+14, {align:'right'});
   doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(...SLATE);
   doc.text(subtitle, rightX, PDF_MARGIN+30, {align:'right'});
@@ -781,7 +805,7 @@ function paymentLines(payMethods, branding){
 
 async function drawInvoicePdf(data){
   const b = loadBranding() || {};
-  const doc = newPdfDoc();
+  const doc = await newPdfDoc();
   const logoDims = await loadImageDims(b.logo);
   const rightX = PDF_WIDTH - PDF_MARGIN;
   const pdfCur = pdfCurrencyLabel(data.currency);
@@ -865,7 +889,7 @@ async function drawInvoicePdf(data){
   }
 
   y = checkPageBreak(doc, y, 30);
-  doc.setFont('times','bold'); doc.setFontSize(13); doc.setTextColor(...accentRgb);
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(13); doc.setTextColor(...accentRgb);
   doc.text('Thank you for your business', PDF_MARGIN, y);
   y += 22;
 
@@ -898,7 +922,7 @@ async function drawInvoicePdf(data){
 
 async function drawProposalPdf(data){
   const b = loadBranding() || {};
-  const doc = newPdfDoc();
+  const doc = await newPdfDoc();
   const logoDims = await loadImageDims(b.logo);
   const rightX = PDF_WIDTH - PDF_MARGIN;
   const pdfCur = pdfCurrencyLabel(data.currency);
@@ -967,7 +991,7 @@ async function drawProposalPdf(data){
     y += 8;
     doc.setDrawColor(...INK); doc.line(PDF_MARGIN+320, y, rightX, y); y += 20;
     const accentRgb = hexToRgb(b.accentColor);
-    doc.setFont('times','bold'); doc.setFontSize(17); doc.setTextColor(...accentRgb);
+    doc.setFont(PDF_FONT,'bold'); doc.setFontSize(17); doc.setTextColor(...accentRgb);
     doc.text('Total', PDF_MARGIN+320, y);
     doc.text(pdfCur+fmt(total), rightX, y, {align:'right'});
     y += 30;
@@ -988,7 +1012,7 @@ async function drawProposalPdf(data){
     y = checkPageBreak(doc, y, 60);
     doc.setDrawColor(...INK); doc.setLineWidth(1);
     doc.line(PDF_MARGIN, y+28, PDF_MARGIN+260, y+28);
-    doc.setFont('times','italic'); doc.setFontSize(20); doc.setTextColor(...INK);
+    doc.setFont(PDF_FONT,'italic'); doc.setFontSize(20); doc.setTextColor(...INK);
     doc.text(data.signature, PDF_MARGIN, y+22);
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(...SLATE);
     doc.text('Signed '+(data.signedAt||''), PDF_MARGIN, y+42);
