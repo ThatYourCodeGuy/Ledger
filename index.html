@@ -873,13 +873,25 @@ async function drawInvoicePdf(data){
   doc.text(pdfCur+fmt(data.taxAmt), rightX-10, y, {align:'right'});
   y += 16;
 
-  const boxH = 38;
+  const totalText = pdfCur+fmt(data.grand);
+  const boxX = totalsLabelX-12;
+  const boxW = rightX-boxX;
+  const totalFontSize = 14;
+  const labelFontSize = 10;
+  doc.setFont(PDF_FONT,'bold');
+  doc.setFontSize(totalFontSize);
+  const totalTextW = doc.getTextWidth(totalText);
+  doc.setFontSize(labelFontSize);
+  const labelW = doc.getTextWidth('TOTAL DUE');
+  const oneLineGap = 26;
+  const fitsOneLine = labelW + totalTextW + oneLineGap <= boxW - 20;
+  const boxH = fitsOneLine ? 38 : 54;
   doc.setFillColor(...INK);
-  doc.rect(totalsLabelX-12, y, rightX-(totalsLabelX-12), boxH, 'F');
-  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(10); doc.setTextColor(...accentRgb);
-  doc.text('TOTAL DUE', totalsLabelX, y+boxH/2+4);
-  doc.setFontSize(14);
-  doc.text(pdfCur+fmt(data.grand), rightX-10, y+boxH/2+4, {align:'right'});
+  doc.rect(boxX, y, boxW, boxH, 'F');
+  doc.setFont(PDF_FONT,'bold'); doc.setFontSize(labelFontSize); doc.setTextColor(...accentRgb);
+  doc.text('TOTAL DUE', totalsLabelX, y+(fitsOneLine ? boxH/2+4 : 18));
+  doc.setFontSize(totalFontSize);
+  doc.text(totalText, rightX-10, y+(fitsOneLine ? boxH/2+4 : 40), {align:'right'});
   y += boxH + 28;
 
   if(data.notes){
